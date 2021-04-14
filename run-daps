@@ -118,7 +118,7 @@ if [ -n "$DEBUG" ]; then
     set -ex
 fi
 
-if [ $# -eq 0 ]; then
+if [[ $# -eq 0 || -n "$HELP" ]]; then
     usage
 else
     main $@
