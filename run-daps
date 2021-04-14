@@ -29,7 +29,7 @@ function check_deps {
 
 function buildah_build_image {
     container=$(buildah from --pull registry.opensuse.org/opensuse/leap:latest)
-    buildah run $container zypper -n in sudo tar daps
+    buildah run $container zypper -n in tar daps xmlformat
     buildah config --workingdir /root/docs/ $container
     buildah commit $container $CONTAINER_NAME_TAG
 }
