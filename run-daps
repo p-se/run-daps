@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+#
+# This script builds the docs using an OCI container that is created before the
+# docs are built. It is meant to be an easy entrance to building the docs with
+# daps on operating systems where `daps` or its dependencies required to build
+# these docs are not available.
+
+function check {
+    which $@ >/dev/null
+}
+
+CONTAINER_NAME_TAG=${CONTAINER_NAME_TAG:-"doc-ses/daps"}
+ENTRYPOINT=${ENTRYPOINT:-daps}
+
+function validate_env {
+    if [ -z "$CONTAINER_NAME_TAG" ]; then
+        echo >&2 "error: \$CONTAINER_NAME is empty"
+        exit -1
+    fi
+}
+
+function check_deps {
+    if ! (check podman && check buildah); then
+        echo >&2 "error: podman and/or buildah not installed"
+        exit -1
+    fi
+}
+
+function buildah_build_image {
+    container=$(buildah from --pull registry.opensuse.org/opensuse/leap:latest)
+    buildah run $container zypper -n in sudo tar daps
+    buildah run $container bash -c "useradd -m user && \
+        echo \"user ALL=(ALL) NOPASSWD: ALL\" >> /etc/sudoers"
+    buildah config --user user --workingdir /home/user $container
+    buildah commit $container $CONTAINER_NAME_TAG
+}
+
+function ensure_image_is_built {
+    if ! podman image inspect localhost/${CONTAINER_NAME_TAG} >/dev/null; then
+        buildah_build_image
+    fi
+}
+
+function main {
+    validate_env
+    check_deps
+    ensure_image_is_built
+    podman run \
+        --rm \
+        -it \
+        --name daps \
+        --hostname daps \
+        --network=host \
+        --user=1000:1000 \
+        -v $(pwd):/home/user \
+        --entrypoint=$ENTRYPOINT \
+        $CONTAINER_NAME_TAG $@
+}
+
+function usage {
+    cat <<EOF
+NAME
+
+    run-daps.sh - runs daps inside a container
+
+SYNOPSIS
+
+    ./run-daps [OPTION] [ARGUMENT]
+
+DESCRIPTION
+
+    run-daps.sh builds a container if no container exists that could be used
+    and runs "daps" inside this container, while the current folder is
+    mounted inside it, so that the compiled docs end up being in the "build"
+    directory.
+
+    "daps" is the entrypoint of the container, so that only arguments to the
+    "daps" binary need to be appended to execute daps.
+
+EXAMPLES
+
+    Running run-daps without any arguments prints this help message. If any
+    argument is provided, it is passed along to daps inside the container.
+
+    ./run-daps
+
+    prints this help, whereas
+
+    ./run-daps -h
+
+    prints the help screen of "daps" running inside the container.
+
+    ./run-daps -d DC-ses-deployment html
+
+    creates the HTML version of the SES deployment guide in the
+    "build/ses-deployment/html" directory.
+
+    ./run-daps -d DC-ses-deployment html
+
+    creates the PDF version of the SES deployment guide in the
+    "build/ses-deployment/pdf" directory.
+
+SEE ALSO
+
+    Daps2Docker - https://github.com/openSUSE/daps2docker
+
+        Daps2Docker is meant to make documentation generation using Docker
+        (or Podman) as easy as possible and is maintained by several people.
+
+        run-daps however, is meant to be just a thin (and fast-running)
+        wrapper around daps to make it available on all operating systems
+        capable of running Linux.
+
+        For a more comprehensive comparion of both you may want to visit
+        https://github.com/SUSE/doc-ses/pull/889
+EOF
+}
+
+if [ $# -eq 0 ]; then
+    usage
+else
+    main $@
+fi
