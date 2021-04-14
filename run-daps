@@ -11,6 +11,7 @@ function check {
 
 CONTAINER_NAME_TAG=${CONTAINER_NAME_TAG:-"doc-ses/daps"}
 ENTRYPOINT=${ENTRYPOINT:-daps}
+DEBUG=${DEBUG:-}
 
 function validate_env {
     if [ -z "$CONTAINER_NAME_TAG" ]; then
@@ -29,9 +30,7 @@ function check_deps {
 function buildah_build_image {
     container=$(buildah from --pull registry.opensuse.org/opensuse/leap:latest)
     buildah run $container zypper -n in sudo tar daps
-    buildah run $container bash -c "useradd -m user && \
-        echo \"user ALL=(ALL) NOPASSWD: ALL\" >> /etc/sudoers"
-    buildah config --user user --workingdir /home/user $container
+    buildah config --workingdir /root/docs/ $container
     buildah commit $container $CONTAINER_NAME_TAG
 }
 
@@ -51,8 +50,7 @@ function main {
         --name daps \
         --hostname daps \
         --network=host \
-        --user=1000:1000 \
-        -v $(pwd):/home/user \
+        -v $(pwd):/root/docs \
         --entrypoint=$ENTRYPOINT \
         $CONTAINER_NAME_TAG $@
 }
@@ -115,6 +113,10 @@ SEE ALSO
         https://github.com/SUSE/doc-ses/pull/889
 EOF
 }
+
+if [ -n "$DEBUG" ]; then
+    set -ex
+fi
 
 if [ $# -eq 0 ]; then
     usage
