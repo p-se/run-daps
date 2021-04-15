@@ -29,7 +29,7 @@ function check_deps {
 
 function buildah_build_image {
     container=$(buildah from --pull registry.opensuse.org/opensuse/leap:latest)
-    buildah run $container zypper -n in tar daps xmlformat
+    buildah run $container zypper -n in tar daps xmlformat inotify-tools
     buildah config --workingdir /root/docs/ $container
     buildah commit $container $CONTAINER_NAME_TAG
 }
@@ -44,24 +44,53 @@ function main {
     validate_env
     check_deps
     ensure_image_is_built
+
     if [ "$1" = "format" ]; then
         shift
-        name=daps-xmlformat
-        hostname=daps-xmlformat
-        ENTRYPOINT=daps-xmlformat
+        podman run \
+            --rm \
+            -it \
+            --name daps-xmlformat \
+            --hostname daps-xmlformat \
+            --network=host \
+            -v $(pwd):/root/docs \
+            --entrypoint=daps-xmlformat \
+            $CONTAINER_NAME_TAG $@
+    elif [ "$1" = "watch" ]; then
+        # shifting is actually not necessary but in case the command gets
+        # extended and will ever use $@, it would prevent an issue right away.
+        shift
+
+        args="-d DC-ses-all html"
+        if [ $# -ne 0 ]; then
+            args=$@
+        fi
+        cmd="
+            inotifywait -q -m -e close_write xml/ | while read event; do
+                daps $args
+            done
+        "
+        echo "watching files in xml/ for changes"
+        podman run \
+            --rm \
+            -it \
+            --name daps-watch \
+            --hostname daps-watch \
+            --network=host \
+            -v $(pwd):/root/docs \
+            --entrypoint=bash \
+            $CONTAINER_NAME_TAG -c "eval $cmd"
     else
-        name=daps
-        hostname=daps
+        podman run \
+            --rm \
+            -it \
+            --name daps \
+            --hostname daps \
+            --network=host \
+            -v $(pwd):/root/docs \
+            --entrypoint=$ENTRYPOINT \
+            $CONTAINER_NAME_TAG $@
     fi
-    podman run \
-        --rm \
-        -it \
-        --name $name \
-        --hostname $hostname \
-        --network=host \
-        -v $(pwd):/root/docs \
-        --entrypoint=$ENTRYPOINT \
-        $CONTAINER_NAME_TAG $@
 }
 
 function usage {
@@ -72,7 +101,18 @@ NAME
 
 SYNOPSIS
 
-    ./run-daps [OPTION] [ARGUMENT]
+    ./run-daps [<run-daps-argument>|<daps-argument>]
+
+    run-daps arguments:
+
+        None            - print this help screen
+        format <arg>    - format file passed in <arg>
+        watch           - watch xml/ dir for changes and rebuild docs automatically
+        watch <args>    - watch xml/ dir and pass <args> to $(daps) on changes
+
+    daps arguments:
+
+        Every non-"run-daps-argument" is passed along to daps.
 
 DESCRIPTION
 
@@ -111,9 +151,19 @@ EXAMPLES
     creates the PDF version of the SES deployment guide in the
     "build/ses-deployment/pdf" directory.
 
-    ENTRYPOINT=daps-xmlformat run-daps
+    run-daps format <file>
 
-    runs daps-xmlformat to properly format the documentation.
+    formats the given file with \`daps-xmlformat\`.
+
+    run-daps watch
+
+    watches the "xml/" directory for changes and rebuilds \`DC-ses-all\`.
+
+    run-daps watch -d DC-ses-admin
+
+    watches the "xml/" directory for changes and rebuilds \`DC-ses-admin\` on
+    changes.
+
 
 SEE ALSO
 
