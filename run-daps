@@ -44,11 +44,20 @@ function main {
     validate_env
     check_deps
     ensure_image_is_built
+    if [ "$1" = "format" ]; then
+        shift
+        name=daps-xmlformat
+        hostname=daps-xmlformat
+        ENTRYPOINT=daps-xmlformat
+    else
+        name=daps
+        hostname=daps
+    fi
     podman run \
         --rm \
         -it \
-        --name daps \
-        --hostname daps \
+        --name $name \
+        --hostname $hostname \
         --network=host \
         -v $(pwd):/root/docs \
         --entrypoint=$ENTRYPOINT \
@@ -80,23 +89,31 @@ EXAMPLES
     Running run-daps without any arguments prints this help message. If any
     argument is provided, it is passed along to daps inside the container.
 
-    ./run-daps
+    run-daps
 
     prints this help, whereas
 
-    ./run-daps -h
+    run-daps -h
+
+    or
+
+    HELP=anything run-daps
 
     prints the help screen of "daps" running inside the container.
 
-    ./run-daps -d DC-ses-deployment html
+    run-daps -d DC-ses-deployment html
 
     creates the HTML version of the SES deployment guide in the
     "build/ses-deployment/html" directory.
 
-    ./run-daps -d DC-ses-deployment html
+    run-daps -d DC-ses-deployment html
 
     creates the PDF version of the SES deployment guide in the
     "build/ses-deployment/pdf" directory.
+
+    ENTRYPOINT=daps-xmlformat run-daps
+
+    runs daps-xmlformat to properly format the documentation.
 
 SEE ALSO
 
